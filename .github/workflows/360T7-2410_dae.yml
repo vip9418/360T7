@@ -84,10 +84,19 @@ jobs:
         cd openwrt/bin/targets/*/*
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          openwrt/.config
+          openwrt/logs/    
+
     - name: Generate tag
       id: tag
       run: |
-        echo "release_tag=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_OUTPUT
+        echo "release_tag=360T7-dae-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v2
