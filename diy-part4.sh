@@ -1,29 +1,88 @@
 #!/bin/bash
-sed -i 's/192.168.6.1/192.168.2.1/' ./package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt-2.4G/cmcc/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i 's/ImmortalWrt-5G/cmcc_5G/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i 's/36/auto/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i 's/encryption=none/encryption=sae-mixed/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i '/encryption=sae-mixed/a \ \ \ \ set wireless.default_${dev}.key=12345678' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+#
+# File name: diy-part4.sh
+# Description: OpenWrt DIY script part 4 (After feeds install)
+# Executed after: ./scripts/feeds install -a
+#
 
-rm -rf ./feeds/packages/lang/golang && git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
+set -e
 
-# argon主题
-### rm -rf ./feeds/luci/themes/luci-theme-argon && git clone --depth 1 https://github.com/immortalwrt/luci tmp_luci && \cp -rf tmp_luci/themes/luci-theme-argon/ feeds/luci/themes/luci-theme-argon/ && rm -rf tmp_luci
-# 替换默认背景
-\cp -f $GITHUB_WORKSPACE/argon/bg1.jpg ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/bg1.jpg
-# 替换字体
-rm -f ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/fonts/TypoGraphica*
-\cp -f $GITHUB_WORKSPACE/argon/fonts/* ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/fonts
-# 修改界面
-# 多彩效果
+echo "=========================================="
+echo "  DIY Part 4: Post-feeds customization"
+echo "=========================================="
+
+# -----------------------------------------------
+# 【Step 1】网络基础 & WiFi 配置 (保持原始逻辑)
+# -----------------------------------------------
+echo ""
+echo "=== Step 1: Network & WiFi configuration ==="
+
+sed -i 's/192.168.6.1/192.168.2.1/' \
+    ./package/base-files/files/bin/config_generate
+
+sed -i 's/ImmortalWrt-2.4G/cmcc/' \
+    ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+sed -i 's/ImmortalWrt-5G/cmcc_5G/' \
+    ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+sed -i 's/36/auto/' \
+    ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+sed -i 's/encryption=none/encryption=sae-mixed/' \
+    ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+sed -i '/encryption=sae-mixed/a \ \ \ \ set wireless.default_${dev}.key=12345678' \
+    ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+
+echo "✓ Network & WiFi configured"
+
+# -----------------------------------------------
+# 【Step 2】Argon 主题定制
+# 主题本体已在 diy-part1.sh 通过 sbwml 版本集成
+# -----------------------------------------------
+echo ""
+echo "=== Step 2: Argon theme customization ==="
+
+ARGON_BASE="./feeds/luci/themes/luci-theme-argon"
+ARGON_CSS="${ARGON_BASE}/htdocs/luci-static/argon/css/cascade.css"
+ARGON_FONTS="${ARGON_BASE}/htdocs/luci-static/argon/fonts"
+
+# 检查 argon 主题是否存在
+if [ ! -d "${ARGON_BASE}" ]; then
+    echo "❌ ERROR: luci-theme-argon not found at ${ARGON_BASE}"
+    exit 1
+fi
+
+# 检查自定义资源目录
+if [ ! -d "${GITHUB_WORKSPACE}/argon" ]; then
+    echo "⚠ WARNING: argon resource directory not found, skip asset replacement"
+else
+    # 替换背景图
+    if [ -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" ]; then
+        cp -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" \
+            "${ARGON_BASE}/htdocs/luci-static/argon/img/bg1.jpg"
+        echo "✓ Background image replaced"
+    fi
+
+    # 替换字体
+    if [ -d "${GITHUB_WORKSPACE}/argon/fonts" ]; then
+        rm -f "${ARGON_FONTS}/TypoGraphica"*
+        cp -f "${GITHUB_WORKSPACE}/argon/fonts/"* "${ARGON_FONTS}/"
+        echo "✓ Fonts replaced"
+    fi
+fi
+
+# -----------------------------------------------
+# CSS 深度定制
+# -----------------------------------------------
+echo "  Applying CSS customizations..."
+
+# 1. 注入 shine 渐变动画 keyframes
 sed -i '/@keyframes anim-fade-in/i\
 @keyframes shine {\
   0% { background-position: -200% center; }\
   100% { background-position: 200% center; }\
 }\
-' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 主页标识
+' "${ARGON_CSS}"
+
+# 2. 主页导航品牌文字流光渐变
 sed -i '/\.main-left \.sidenav-header \.brand {/,/}/c\
 .main-left .sidenav-header .brand {\
   display: block;\
@@ -44,12 +103,17 @@ sed -i '/\.main-left \.sidenav-header \.brand {/,/}/c\
   -webkit-background-clip: text;\
   -webkit-text-fill-color: transparent;\
   animation: shine 5s linear infinite;\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页标识居中
-sed -i '/\.brand {/,/}/ s/margin: 50px auto 100px 50px;/margin: 50px auto 100px auto;/' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 删除图标
-sed -i '/^\.login-page \.login-container \.login-form \.brand \.icon {/,/^}/d' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页标识
+}' "${ARGON_CSS}"
+
+# 3. 登录页品牌标识居中
+sed -i '/\.brand {/,/}/ s/margin: 50px auto 100px 50px;/margin: 50px auto 100px auto;/' \
+    "${ARGON_CSS}"
+
+# 4. 删除登录页品牌 icon
+sed -i '/^\.login-page \.login-container \.login-form \.brand \.icon {/,/^}/d' \
+    "${ARGON_CSS}"
+
+# 5. 登录页品牌文字流光渐变
 sed -i '/\.login-page \.login-container \.login-form \.brand \.brand-text {/,/}/c\
 .login-page .login-container .login-form .brand .brand-text {\
   margin-right: 0px;\
@@ -68,9 +132,10 @@ sed -i '/\.login-page \.login-container \.login-form \.brand \.brand-text {/,/}/
   -webkit-background-clip: text;\
   -webkit-text-fill-color: transparent;\
   animation: shine 5s linear infinite;\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页按钮
-sed -i '/\.cbi-button-apply {/,/}/c\
+}' "${ARGON_CSS}"
+
+# 6. 登录页按钮毛玻璃效果 (精确限定登录页范围)
+sed -i '/\.login-page \.login-container \.login-form \.cbi-button-apply {/,/}/c\
 .login-page .login-container .login-form .cbi-button-apply {\
   width: 100% !important;\
   min-height: 45px;\
@@ -88,13 +153,34 @@ sed -i '/\.cbi-button-apply {/,/}/c\
   cursor: pointer;\
   transition: all 0.25s ease;\
   position: relative;\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
+}' "${ARGON_CSS}"
 
-sed -i '/\.cbi-button-apply:hover/,/}/c\
+# 7. 登录页按钮 hover 效果
+sed -i '/\.login-page \.login-container \.login-form \.cbi-button-apply:hover {/,/}/c\
 .login-page .login-container .login-form .cbi-button-apply:hover {\
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页底部
-sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-sed -i '/<footer/,/<\/footer>/ { /<a class="luci-link"/d }' ./feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer_login.ut
-sed -i 's#<img src="{{ media }}/img/argon.svg" class="icon">##g' ./feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/sysauth.ut
+}' "${ARGON_CSS}"
+
+# 8. 底部链接颜色
+sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' "${ARGON_CSS}"
+
+# 9. 移除页脚 LuCI 链接
+FOOTER_LOGIN="${ARGON_BASE}/ucode/template/themes/argon/footer_login.ut"
+if [ -f "${FOOTER_LOGIN}" ]; then
+    sed -i '/<footer/,/<\/footer>/ { /<a class="luci-link"/d }' "${FOOTER_LOGIN}"
+    echo "✓ Footer LuCI link removed"
+fi
+
+# 10. 移除 argon SVG 图标
+SYSAUTH="${ARGON_BASE}/ucode/template/themes/argon/sysauth.ut"
+if [ -f "${SYSAUTH}" ]; then
+    sed -i 's#<img src="{{ media }}/img/argon.svg" class="icon">##g' "${SYSAUTH}"
+    echo "✓ Argon SVG icon removed"
+fi
+
+echo "✓ Argon theme customization complete"
+
+echo ""
+echo "=========================================="
+echo "  DIY Part 4 Complete"
+echo "=========================================="
