@@ -48,7 +48,6 @@ jobs:
           /opt/az \
           /opt/microsoft \
           /opt/pipx \
-          /usr/lib/google-cloud-sdk \
           /usr/lib/jvm \
           /usr/lib/mono \
           /usr/lib/R \
