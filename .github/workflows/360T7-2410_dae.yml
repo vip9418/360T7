@@ -2,7 +2,11 @@ name: 360T7-2410_dae
 
 on:
   workflow_dispatch:
-
+  
+permissions:
+  contents: write
+  pull-requests: write
+  
 env:
   REPO_URL: https://github.com/chasey-dev/immortalwrt-mt798x-rebase
   REPO_BRANCH: 25.12
