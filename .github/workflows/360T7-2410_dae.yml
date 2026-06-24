@@ -37,7 +37,6 @@ jobs:
     - name: Clone source code
       working-directory: /workdir
       run: |
-        # 浅克隆: 节省时间约 60%，磁盘节省约 70%
         git clone --depth=1 --single-branch \
           -b $REPO_BRANCH $REPO_URL openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
@@ -67,7 +66,6 @@ jobs:
         cd openwrt
         make defconfig
         make download -j8
-        # 清理下载不完整文件 (<1KB)
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
@@ -75,7 +73,6 @@ jobs:
       run: |
         cd openwrt
         echo "Available CPU cores: $(nproc)"
-        # 三级回退: 多核 → 单核 → 单核详细日志
         make -j$(nproc) || make -j1 || make -j1 V=s
 
     - name: Prepare firmware path
@@ -89,17 +86,16 @@ jobs:
         echo "release_tag=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_OUTPUT
 
     - name: Upload firmware to release
-      # v2: 兼容 ubuntu-22.04 的 Node 20 运行时
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body: |
-          ## 360T7 ImmortalWrt 固件 (dae 版)
+          ## 360T7 ImmortalWrt (dae)
           - 源码: padavanonly/immortalwrt-mt798x-6.6
           - 分支: openwrt-24.10-6.6 / Linux 6.6
-          - 防火墙: iptables-nft
-          - 代理方案: luci-app-daede
-          - 包管理: opkg + luci-app-opkg
+          - 防火墙: firewall4
+          - 代理: luci-app-daede
+          - 包管理: opkg
           - 编译时间: ${{ steps.tag.outputs.release_tag }}
         files: |
           ${{ env.FIRMWARE }}/*squashfs-sysupgrade.bin
@@ -114,6 +110,5 @@ jobs:
         releases_keep_latest: 2
         delete_tags: true
         delete_workflows: true
-        # 保留 3 天运行记录，方便排查编译问题
         workflows_keep_day: 3
         gh_token: ${{ secrets.GITHUB_TOKEN }}
