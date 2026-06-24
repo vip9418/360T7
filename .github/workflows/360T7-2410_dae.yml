@@ -8,8 +8,8 @@ permissions:
   pull-requests: write
   
 env:
-  REPO_URL: https://github.com/chasey-dev/immortalwrt-mt798x-rebase
-  REPO_BRANCH: 25.12
+  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
+  REPO_BRANCH: openwrt-24.10-6.6
   CONFIG_FILE: ./config/360T7_2410_dae.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part4.sh
