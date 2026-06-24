@@ -20,16 +20,63 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout
+    - name: 📥 拉取仓库代码
       uses: actions/checkout@main
 
-    - name: Initialization environment
+    - name: 🧹 释放磁盘空间
+      run: |
+        echo "======= 清理前磁盘空间 ======="
+        df -hT
+        sudo rm -rf \
+          /usr/share/dotnet \
+          /usr/share/swift \
+          /usr/share/java \
+          /usr/share/ruby \
+          /usr/local/lib/android \
+          /usr/local/graalvm \
+          /usr/local/.ghcup \
+          /usr/local/share/powershell \
+          /usr/local/share/chromium \
+          /usr/local/share/edge_driver \
+          /usr/local/share/gecko_driver \
+          /usr/local/share/chromedriver-linux64 \
+          /opt/ghc \
+          /opt/hostedtoolcache/CodeQL \
+          /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk \
+          /opt/hostedtoolcache/Ruby \
+          /opt/hostedtoolcache/go \
+          /opt/az \
+          /opt/microsoft \
+          /opt/pipx \
+          /usr/lib/google-cloud-sdk \
+          /usr/lib/jvm \
+          /usr/lib/mono \
+          /usr/lib/R \
+          /usr/lib/postgresql \
+          /usr/lib/heroku
+        sudo docker image prune --all --force
+        sudo apt-get purge -y \
+          azure-cli \
+          google-cloud-cli \
+          google-chrome-stable \
+          firefox \
+          powershell \
+          mono-devel \
+          libgl1-mesa-dri \
+          'php*' \
+          'dotnet*' \
+          'llvm*' \
+          'ruby*' 2>/dev/null || true
+        sudo apt-get autoremove -y
+        sudo apt-get clean
+        echo "======= 清理后磁盘空间 ======="
+        df -hT
+
+    - name: 🔧 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet \
-          /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-        sudo docker image prune --all --force
+        sudo rm -rf /etc/apt/sources.list.d/*
         sudo -E apt-get -qq update
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
@@ -38,33 +85,33 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: Clone source code
+    - name: 📦 克隆源码
       working-directory: /workdir
       run: |
         git clone --depth=1 --single-branch \
           -b $REPO_BRANCH $REPO_URL openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Load custom feeds
+    - name: 🔌 加载自定义 feeds
       run: |
         chmod +x $DIY_P1_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    - name: Update feeds
+    - name: 🔄 更新 feeds
       run: cd openwrt && ./scripts/feeds update -a
 
-    - name: Install feeds
+    - name: 📲 安装 feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    - name: Load custom configuration
+    - name: ⚙️ 加载自定义配置
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    - name: Download package
+    - name: 📡 下载编译所需软件包
       id: package
       run: |
         cd openwrt
@@ -73,32 +120,32 @@ jobs:
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: Compile the firmware
+    - name: 🔨 编译固件
       run: |
         cd openwrt
         echo "Available CPU cores: $(nproc)"
         make -j$(nproc) || make -j1 || make -j1 V=s
 
-    - name: Prepare firmware path
-      run: |
-        cd openwrt/bin/targets/*/*
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-
-    - name: Upload logs on failure
+    - name: ❌ 上传编译失败日志
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: build-logs
         path: |
           openwrt/.config
-          openwrt/logs/    
+          openwrt/logs/
 
-    - name: Generate tag
+    - name: 📂 整理固件路径
+      run: |
+        cd openwrt/bin/targets/*/*
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+
+    - name: 🏷️ 生成发布标签
       id: tag
       run: |
         echo "release_tag=360T7-dae-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
 
-    - name: Upload firmware to release
+    - name: 🚀 发布固件到 Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.tag.outputs.release_tag }}
@@ -116,7 +163,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Delete releases and workflows runs
+    - name: 🗑️ 清理旧版本 Release 和工作流记录
       uses: ophub/delete-releases-workflows@main
       with:
         delete_releases: true
