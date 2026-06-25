@@ -46,18 +46,42 @@ UPDATE_PACKAGE() {
     echo "  ✓ $PKG_NAME installed"
 }
 
+# =============================================
+# 1. 添加 daede feed（你原有的）
+# =============================================
 if ! grep -q "openwrt-daede" feeds.conf.default; then
     echo "src-git daede https://github.com/kenzok8/openwrt-daede.git^main" \
         >> feeds.conf.default
 fi
 
+# =============================================
+# 2. 添加 small-package feed（新增）
+# =============================================
+if ! grep -q "small-package" feeds.conf.default; then
+    echo "src-git smpackage https://github.com/kenzok8/small-package" \
+        >> feeds.conf.default
+fi
+
+# =============================================
+# 3. 更新 golang 到 26.x（你原有的）
+# =============================================
 rm -rf ./feeds/packages/lang/golang
 git clone --depth=1 --single-branch \
     --branch "26.x" \
     https://github.com/sbwml/packages_lang_golang \
     feeds/packages/lang/golang
 
+# =============================================
+# 4. 删除原 feeds 中与 small-package 冲突的包
+# =============================================
+# 删除 dae/daed 相关冲突（你原有的）
 rm -rf ./feeds/luci/applications/luci-app-dae
 rm -rf ./feeds/luci/applications/luci-app-daed
 rm -rf ./feeds/packages/net/dae
 rm -rf ./feeds/packages/net/daed
+
+# 删除 small-package feed 中与主 feeds 冲突的基础包
+rm -rf ./feeds/smpackage/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
+
+echo ""
+echo "✓ All feeds and packages configured."
