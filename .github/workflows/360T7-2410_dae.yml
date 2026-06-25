@@ -99,25 +99,12 @@ jobs:
     - name: 📲 安装 feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    - name: ⚙️ 加载配置（仓库 defconfig 为基础 + 用户追加）
+    - name: ⚙️ 加载配置
       run: |
         cd openwrt
-
-        echo ">>> 复制仓库官方 dae defconfig 作为基础..."
-        if [ ! -f "defconfig/mt7981-ax3000_dae.config" ]; then
-            echo "❌ ERROR: defconfig/mt7981-ax3000_dae.config 不存在"
-            echo "可用 defconfig："
-            ls defconfig/
-            exit 1
-        fi
-        cp -f defconfig/mt7981-ax3000_dae.config .config
-        echo "  ✓ 基础配置已加载"
-
-        echo ">>> 追加用户自定义配置..."
-        if [ -f "$GITHUB_WORKSPACE/$CONFIG_PATCH" ]; then
-            cat "$GITHUB_WORKSPACE/$CONFIG_PATCH" >> .config
-            echo "  ✓ 用户配置已追加"
-        fi
+        echo ">>> 复制用户完整配置..."
+        cp -f $GITHUB_WORKSPACE/$CONFIG_PATCH .config
+        echo "  ✓ 配置已加载: $CONFIG_PATCH"
 
         chmod +x $GITHUB_WORKSPACE/$DIY_P3_SH
         $GITHUB_WORKSPACE/$DIY_P3_SH
