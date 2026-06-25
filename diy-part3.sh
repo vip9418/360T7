@@ -1,5 +1,6 @@
 #!/bin/bash
 # diy-part3.sh
+# 执行时机：feeds install 之后
 
 set -e
 
@@ -12,7 +13,6 @@ echo "========================================="
 # =============================================
 echo ""
 echo ">>> 修改默认 LAN IP ..."
-
 CONFIG_GEN="./package/base-files/files/bin/config_generate"
 if [ -f "$CONFIG_GEN" ]; then
     sed -i 's/192\.168\.6\.1/192.168.2.1/' "$CONFIG_GEN"
@@ -23,16 +23,13 @@ fi
 
 # =============================================
 # 2. WiFi 默认参数（mtwifi.sh 方式）
-#    padavanonly MTK SDK 仓库包含 mtwifi-cfg
 # =============================================
 echo ""
-echo ">>> 修改 WiFi 默认参数（mtwifi.sh）..."
-
+echo ">>> 修改 WiFi 默认参数..."
 MTWIFI_SH="./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh"
 
 if [ ! -f "$MTWIFI_SH" ]; then
-    echo "  ⚠ mtwifi.sh 未找到（路径: $MTWIFI_SH）"
-    echo "  → 改用 uci-defaults 方式"
+    echo "  ⚠ mtwifi.sh 未找到，改用 uci-defaults 方式"
     UCI_DIR="./package/base-files/files/etc/uci-defaults"
     mkdir -p "$UCI_DIR"
     cat > "${UCI_DIR}/99-wireless-defaults" << 'WIFI_EOF'
@@ -54,29 +51,15 @@ WIFI_EOF
     chmod +x "${UCI_DIR}/99-wireless-defaults"
     echo "  ✓ uci-defaults WiFi 脚本已写入"
 else
-    echo "  ✓ 找到 mtwifi.sh，开始修改..."
-
-    # SSID
     sed -i 's/ImmortalWrt-2\.4G/cmcc/' "$MTWIFI_SH"
     sed -i 's/ImmortalWrt-5G/cmcc_5G/' "$MTWIFI_SH"
-    echo "  ✓ SSID: cmcc / cmcc_5G"
-
-    # 精确匹配信道 36，避免误替换其他数字
     sed -i 's/\(channel\s*=\s*\)36\b/\1auto/g' "$MTWIFI_SH"
-    echo "  ✓ 信道 → auto"
-
-    # 加密
     sed -i 's/encryption=none/encryption=sae-mixed/' "$MTWIFI_SH"
-    echo "  ✓ 加密 → sae-mixed"
-
-    # 密码（幂等）
     if ! grep -q 'key=12345678' "$MTWIFI_SH"; then
         sed -i '/encryption=sae-mixed/a \    set wireless.default_${dev}.key=12345678' \
             "$MTWIFI_SH"
-        echo "  ✓ WiFi 密码 → 12345678"
-    else
-        echo "  - 密码已存在，跳过"
     fi
+    echo "  ✓ SSID: cmcc / cmcc_5G | 加密: sae-mixed | 密码: 12345678"
 fi
 
 # =============================================
@@ -92,13 +75,10 @@ echo ">>> 检查 Argon 主题..."
 
 if [ ! -d "${ARGON_BASE}" ]; then
     echo "  ⚠ luci-theme-argon 未找到，跳过"
-    echo "    请确认 config 中已启用 CONFIG_PACKAGE_luci-theme-argon=y"
 else
     echo "  ✓ Argon 主题目录已找到"
 
-    # 3.1 背景图 & 字体
     if [ -d "${GITHUB_WORKSPACE}/argon" ]; then
-        echo ">>> 复制自定义资源..."
         [ -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" ] && {
             cp -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" "${ARGON_IMG}/bg1.jpg"
             echo "  ✓ 背景图已替换"
@@ -113,7 +93,6 @@ else
     if [ -f "${ARGON_CSS}" ]; then
         echo ">>> 修改 Argon CSS..."
 
-        # shine 动画（幂等）
         if ! grep -q "@keyframes shine" "${ARGON_CSS}"; then
             sed -i '/@keyframes anim-fade-in/i\
 @keyframes shine {\
@@ -124,7 +103,6 @@ else
             echo "  ✓ shine 关键帧已注入"
         fi
 
-        # 侧边栏 Brand 渐变
         sed -i '/\.main-left \.sidenav-header \.brand {/,/}/c\
 .main-left .sidenav-header .brand {\
   display: block; margin: 0; font-size: 1.8rem;\
@@ -139,11 +117,9 @@ else
 
         sed -i '/\.brand {/,/}/ s/margin: 50px auto 100px 50px;/margin: 50px auto 100px auto;/' \
             "${ARGON_CSS}"
-        echo "  ✓ Brand margin 居中"
 
         sed -i '/^\.login-page \.login-container \.login-form \.brand \.icon {/,/^}/d' \
             "${ARGON_CSS}"
-        echo "  ✓ 登录页图标样式删除"
 
         sed -i '/\.login-page \.login-container \.login-form \.brand \.brand-text {/,/}/c\
 .login-page .login-container .login-form .brand .brand-text {\
@@ -154,7 +130,6 @@ else
   -webkit-text-fill-color: transparent;\
   animation: shine 5s linear infinite;\
 }' "${ARGON_CSS}"
-        echo "  ✓ 登录页 Brand 渐变"
 
         sed -i '/\.login-page \.login-container \.login-form \.cbi-button-apply {/,/}/c\
 .login-page .login-container .login-form .cbi-button-apply {\
@@ -165,19 +140,14 @@ else
   border: none; border-radius: 9999px; outline: none;\
   cursor: pointer; transition: all 0.25s ease; position: relative;\
 }' "${ARGON_CSS}"
-        echo "  ✓ 登录按钮样式"
 
         sed -i '/\.login-page \.login-container \.login-form \.cbi-button-apply:hover {/,/}/c\
 .login-page .login-container .login-form .cbi-button-apply:hover {\
   box-shadow: 0 0 0 2px rgba(255,255,255,0.5);\
 }' "${ARGON_CSS}"
-        echo "  ✓ 登录按钮 Hover"
 
         sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' "${ARGON_CSS}"
-        echo "  ✓ 链接激活颜色"
         echo "  ✓ CSS 修改完成"
-    else
-        echo "  ⚠ cascade.css 未找到，跳过 CSS 修改"
     fi
 
     FOOTER_LOGIN="${ARGON_BASE}/ucode/template/themes/argon/footer_login.ut"
