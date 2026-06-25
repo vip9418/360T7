@@ -1,48 +1,119 @@
 #!/bin/bash
-sed -i 's/192.168.6.1/192.168.2.1/' ./package/base-files/files/bin/config_generate
-sed -i 's/ImmortalWrt-2.4G/NW/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i 's/ImmortalWrt-5G/NW/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i 's/36/auto/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i 's/encryption=none/encryption=sae-mixed/' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
-sed -i '/encryption=sae-mixed/a \ \ \ \ set wireless.default_${dev}.key=blue1235' ./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh
+# diy-part3.sh
+# ⚠️ 执行时机：feeds install 之后
+# ✅ 职责：系统配置修改、WiFi 默认参数、Argon 主题美化
 
-### rm -rf ./feeds/packages/lang/golang && git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
+set -e
 
-# 移除 openwrt feeds 自带的核心库
-rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
-# 移除 openwrt feeds 过时的luci版本
-rm -rf feeds/luci/applications/luci-app-passwall
-git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
+echo "========================================="
+echo "[Part3] 自定义系统配置 & 主题美化"
+echo "========================================="
 
-# 替换规则
-sed -i '/gfwlist\/gfwlist"/a\o:value("https://github.com/najloa/geoip/releases/latest/download/proxy.txt", translate("najloa/proxy"))' ./package/passwall-luci/luci-app-passwall/luasrc/model/cbi/passwall/client/rule.lua
-sed -i '/ChinaMax_Domain"/a\o:value("https://github.com/najloa/geoip/releases/latest/download/twitchcdn.txt", translate("najloa/twitch-cdn"))' ./package/passwall-luci/luci-app-passwall/luasrc/model/cbi/passwall/client/rule.lua
-sed -i '/ChinaMax_Domain"/a\o:value("https://github.com/najloa/geoip/releases/latest/download/cn.txt", translate("najloa/cn"))' ./package/passwall-luci/luci-app-passwall/luasrc/model/cbi/passwall/client/rule.lua
-sed -i '/MetaCubeX\/geosite (CDN)"/a\	o:value("https://github.com/najloa/geoip/releases/latest/download/geosite.dat", translate("najloa/geosite"))' ./package/passwall-luci/luci-app-passwall/luasrc/model/cbi/passwall/client/rule.lua
-sed -i '/MetaCubeX\/geoip (CDN)"/a\	o:value("https://github.com/najloa/geoip/releases/latest/download/geoip.dat", translate("najloa/geoip"))' ./package/passwall-luci/luci-app-passwall/luasrc/model/cbi/passwall/client/rule.lua
-sed -i 's|local excluded_domain = {[^}]*}|local excluded_domain = {}|g' ./package/passwall-luci/luci-app-passwall/root/usr/share/passwall/rule_update.lua
-> ./package/passwall-luci/luci-app-passwall/root/usr/share/passwall/rules/chnlist
-### curl -s https://core.telegram.org/resources/cidr.txt > ./package/passwall-luci/luci-app-passwall/root/usr/share/passwall/rules/proxy_ip
-curl -s https://core.telegram.org/resources/cidr.txt > /tmp/telegram_cidr.txt && grep -Fvxf /tmp/telegram_cidr.txt ./package/passwall-luci/luci-app-passwall/root/usr/share/passwall/rules/proxy_ip > /tmp/proxy_ip_cleaned && cat /tmp/telegram_cidr.txt >> /tmp/proxy_ip_cleaned && mv /tmp/proxy_ip_cleaned ./package/passwall-luci/luci-app-passwall/root/usr/share/passwall/rules/proxy_ip && rm /tmp/telegram_cidr.txt
+# =============================================
+# 1. 系统基础配置
+# =============================================
+echo ""
+echo ">>> 修改默认 LAN IP ..."
+sed -i 's/192\.168\.6\.1/192.168.2.1/' \
+    ./package/base-files/files/bin/config_generate
+echo "  ✓ LAN IP → 192.168.2.1"
 
-# argon主题
-### rm -rf ./feeds/luci/themes/luci-theme-argon && git clone --depth 1 https://github.com/immortalwrt/luci tmp_luci && \cp -rf tmp_luci/themes/luci-theme-argon/ feeds/luci/themes/luci-theme-argon/ && rm -rf tmp_luci
-# 替换默认背景
-\cp -f $GITHUB_WORKSPACE/argon/bg1.jpg ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/img/bg1.jpg
-# 替换字体
-rm -f ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/fonts/TypoGraphica*
-\cp -f $GITHUB_WORKSPACE/argon/fonts/* ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/fonts
-# 修改界面
-# 多彩效果
-sed -i '/@keyframes anim-fade-in/i\
+# =============================================
+# 2. WiFi 默认参数（针对 MTK mtwifi-cfg）
+# =============================================
+MTWIFI_SH="./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh"
+
+if [ ! -f "$MTWIFI_SH" ]; then
+    echo "  ⚠ WARNING: mtwifi.sh 未找到，跳过 WiFi 配置"
+else
+    echo ""
+    echo ">>> 修改 WiFi 默认参数..."
+
+    # SSID
+    sed -i 's/ImmortalWrt-2\.4G/cmcc/' "$MTWIFI_SH"
+    sed -i 's/ImmortalWrt-5G/cmcc_5G/' "$MTWIFI_SH"
+    echo "  ✓ SSID: cmcc / cmcc_5G"
+
+    # ✅ Bug修复：原 s/36/auto/ 过于宽泛，会误替换文件中所有数字36
+    #    改为精确匹配 channel=36 格式，避免误伤其他配置项
+    sed -i 's/\bchannel\b\s*=\s*36\b/channel=auto/g' "$MTWIFI_SH"
+    sed -i 's/\bChannel\b\s*=\s*36\b/Channel=auto/g' "$MTWIFI_SH"
+    echo "  ✓ 信道 → auto"
+
+    # 加密方式
+    sed -i 's/encryption=none/encryption=sae-mixed/' "$MTWIFI_SH"
+    echo "  ✓ 加密 → sae-mixed"
+
+    # 密码（仅在 encryption=sae-mixed 行后插入，避免重复插入）
+    if ! grep -q 'key=12345678' "$MTWIFI_SH"; then
+        sed -i '/encryption=sae-mixed/a \    set wireless.default_${dev}.key=12345678' \
+            "$MTWIFI_SH"
+        echo "  ✓ WiFi 密码 → 12345678"
+    else
+        echo "  - WiFi 密码已存在，跳过"
+    fi
+fi
+
+# =============================================
+# 3. Argon 主题美化
+# =============================================
+ARGON_BASE="./feeds/luci/themes/luci-theme-argon"
+ARGON_CSS="${ARGON_BASE}/htdocs/luci-static/argon/css/cascade.css"
+ARGON_FONTS="${ARGON_BASE}/htdocs/luci-static/argon/fonts"
+ARGON_IMG="${ARGON_BASE}/htdocs/luci-static/argon/img"
+
+echo ""
+echo ">>> 检查 Argon 主题..."
+
+if [ ! -d "${ARGON_BASE}" ]; then
+    echo "  ⚠ WARNING: luci-theme-argon 未找到，跳过主题美化"
+    echo "    预期路径: ${ARGON_BASE}"
+else
+    echo "  ✓ Argon 主题目录已找到"
+
+    # --- 3.1 自定义背景图 & 字体（来自仓库 argon/ 目录）---
+    if [ -d "${GITHUB_WORKSPACE}/argon" ]; then
+        echo ""
+        echo ">>> 复制自定义资源..."
+
+        if [ -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" ]; then
+            cp -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" "${ARGON_IMG}/bg1.jpg"
+            echo "  ✓ 背景图 bg1.jpg 已替换"
+        fi
+
+        if [ -d "${GITHUB_WORKSPACE}/argon/fonts" ] && \
+           [ -d "${ARGON_FONTS}" ]; then
+            rm -f "${ARGON_FONTS}/TypoGraphica"*
+            cp -f "${GITHUB_WORKSPACE}/argon/fonts/"* "${ARGON_FONTS}/"
+            echo "  ✓ 自定义字体已替换"
+        fi
+    else
+        echo "  - 无自定义资源目录 (argon/)，跳过资源替换"
+    fi
+
+    # ✅ 所有 CSS 修改前先检查文件是否存在
+    if [ ! -f "${ARGON_CSS}" ]; then
+        echo "  ⚠ WARNING: cascade.css 未找到，跳过 CSS 修改"
+        echo "    预期路径: ${ARGON_CSS}"
+    else
+        echo ""
+        echo ">>> 修改 Argon CSS..."
+
+        # --- 3.2 注入 shine 动画关键帧（幂等：先检查是否已存在）---
+        if ! grep -q "@keyframes shine" "${ARGON_CSS}"; then
+            sed -i '/@keyframes anim-fade-in/i\
 @keyframes shine {\
   0% { background-position: -200% center; }\
   100% { background-position: 200% center; }\
 }\
-' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 主页标识
-sed -i '/\.main-left \.sidenav-header \.brand {/,/}/c\
+' "${ARGON_CSS}"
+            echo "  ✓ shine 动画关键帧已注入"
+        else
+            echo "  - shine 动画已存在，跳过"
+        fi
+
+        # --- 3.3 侧边栏 Brand 渐变文字样式 ---
+        sed -i '/\.main-left \.sidenav-header \.brand {/,/}/c\
 .main-left .sidenav-header .brand {\
   display: block;\
   margin: 0;\
@@ -62,13 +133,21 @@ sed -i '/\.main-left \.sidenav-header \.brand {/,/}/c\
   -webkit-background-clip: text;\
   -webkit-text-fill-color: transparent;\
   animation: shine 5s linear infinite;\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页标识居中
-sed -i '/\.brand {/,/}/ s/margin: 50px auto 100px 50px;/margin: 50px auto 100px auto;/' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 删除图标
-sed -i '/^\.login-page \.login-container \.login-form \.brand \.icon {/,/^}/d' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页标识
-sed -i '/\.login-page \.login-container \.login-form \.brand \.brand-text {/,/}/c\
+}' "${ARGON_CSS}"
+        echo "  ✓ 侧边栏 Brand 渐变样式已应用"
+
+        # --- 3.4 Brand margin 居中 ---
+        sed -i '/\.brand {/,/}/ s/margin: 50px auto 100px 50px;/margin: 50px auto 100px auto;/' \
+            "${ARGON_CSS}"
+        echo "  ✓ Brand margin 居中"
+
+        # --- 3.5 删除登录页图标 ---
+        sed -i '/^\.login-page \.login-container \.login-form \.brand \.icon {/,/^}/d' \
+            "${ARGON_CSS}"
+        echo "  ✓ 登录页图标样式已删除"
+
+        # --- 3.6 登录页 Brand 文字渐变样式 ---
+        sed -i '/\.login-page \.login-container \.login-form \.brand \.brand-text {/,/}/c\
 .login-page .login-container .login-form .brand .brand-text {\
   margin-right: 0px;\
   font-size: 2.6rem;\
@@ -86,9 +165,11 @@ sed -i '/\.login-page \.login-container \.login-form \.brand \.brand-text {/,/}/
   -webkit-background-clip: text;\
   -webkit-text-fill-color: transparent;\
   animation: shine 5s linear infinite;\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页按钮
-sed -i '/\.cbi-button-apply {/,/}/c\
+}' "${ARGON_CSS}"
+        echo "  ✓ 登录页 Brand 文字渐变样式已应用"
+
+        # --- 3.7 登录按钮样式 ---
+        sed -i '/\.login-page \.login-container \.login-form \.cbi-button-apply {/,/}/c\
 .login-page .login-container .login-form .cbi-button-apply {\
   width: 100% !important;\
   min-height: 45px;\
@@ -106,13 +187,44 @@ sed -i '/\.cbi-button-apply {/,/}/c\
   cursor: pointer;\
   transition: all 0.25s ease;\
   position: relative;\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
+}' "${ARGON_CSS}"
+        echo "  ✓ 登录按钮样式已应用"
 
-sed -i '/\.cbi-button-apply:hover/,/}/c\
+        # --- 3.8 登录按钮 Hover 样式 ---
+        sed -i '/\.login-page \.login-container \.login-form \.cbi-button-apply:hover {/,/}/c\
 .login-page .login-container .login-form .cbi-button-apply:hover {\
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);\
-}' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-# 登录页底部
-sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' ./feeds/luci/themes/luci-theme-argon/htdocs/luci-static/argon/css/cascade.css
-sed -i '/<footer/,/<\/footer>/ { /<a class="luci-link"/d }' ./feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/footer_login.ut
-sed -i 's#<img src="{{ media }}/img/argon.svg" class="icon">##g' ./feeds/luci/themes/luci-theme-argon/ucode/template/themes/argon/sysauth.ut
+}' "${ARGON_CSS}"
+        echo "  ✓ 登录按钮 Hover 样式已应用"
+
+        # --- 3.9 链接激活颜色 ---
+        sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' "${ARGON_CSS}"
+        echo "  ✓ 链接激活颜色已修改"
+
+        echo "  ✓ CSS 修改全部完成"
+    fi
+
+    # --- 3.10 删除登录页 Footer 链接 ---
+    FOOTER_LOGIN="${ARGON_BASE}/ucode/template/themes/argon/footer_login.ut"
+    if [ -f "${FOOTER_LOGIN}" ]; then
+        sed -i '/<footer/,/<\/footer>/ { /<a class="luci-link"/d }' \
+            "${FOOTER_LOGIN}"
+        echo "  ✓ 登录页 Footer 链接已删除"
+    else
+        echo "  - footer_login.ut 未找到，跳过"
+    fi
+
+    # --- 3.11 删除登录页 Logo 图标 ---
+    SYSAUTH="${ARGON_BASE}/ucode/template/themes/argon/sysauth.ut"
+    if [ -f "${SYSAUTH}" ]; then
+        sed -i 's#<img src="{{ media }}/img/argon.svg" class="icon">##g' \
+            "${SYSAUTH}"
+        echo "  ✓ 登录页 SVG 图标已删除"
+    else
+        echo "  - sysauth.ut 未找到，跳过"
+    fi
+
+fi  # end ARGON_BASE check
+
+echo ""
+echo "✓ [Part3] 所有自定义配置已完成"
