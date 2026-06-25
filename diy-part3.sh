@@ -1,7 +1,5 @@
 #!/bin/bash
 # diy-part3.sh
-# ⚠️ 执行时机：feeds install 之后
-# ✅ 职责：系统配置修改、WiFi 默认参数、Argon 主题美化
 
 set -e
 
@@ -10,52 +8,98 @@ echo "[Part3] 自定义系统配置 & 主题美化"
 echo "========================================="
 
 # =============================================
-# 1. 系统基础配置
+# 1. 修改默认 LAN IP
+#    config_generate 是 immortalwrt/openwrt 通用路径
+#    VIKINGYFY owrt 完全适用
 # =============================================
 echo ""
 echo ">>> 修改默认 LAN IP ..."
-sed -i 's/192\.168\.6\.1/192.168.2.1/' \
-    ./package/base-files/files/bin/config_generate
-echo "  ✓ LAN IP → 192.168.2.1"
 
-# =============================================
-# 2. WiFi 默认参数（针对 MTK mtwifi-cfg）
-# =============================================
-MTWIFI_SH="./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh"
+CONFIG_GEN="./package/base-files/files/bin/config_generate"
 
-if [ ! -f "$MTWIFI_SH" ]; then
-    echo "  ⚠ WARNING: mtwifi.sh 未找到，跳过 WiFi 配置"
+if [ ! -f "${CONFIG_GEN}" ]; then
+    echo "  ⚠ WARNING: config_generate 未找到"
+    echo "    预期路径: ${CONFIG_GEN}"
 else
-    echo ""
-    echo ">>> 修改 WiFi 默认参数..."
-
-    # SSID
-    sed -i 's/ImmortalWrt-2\.4G/cmcc/' "$MTWIFI_SH"
-    sed -i 's/ImmortalWrt-5G/cmcc_5G/' "$MTWIFI_SH"
-    echo "  ✓ SSID: cmcc / cmcc_5G"
-
-    # ✅ Bug修复：原 s/36/auto/ 过于宽泛，会误替换文件中所有数字36
-    #    改为精确匹配 channel=36 格式，避免误伤其他配置项
-    sed -i 's/\bchannel\b\s*=\s*36\b/channel=auto/g' "$MTWIFI_SH"
-    sed -i 's/\bChannel\b\s*=\s*36\b/Channel=auto/g' "$MTWIFI_SH"
-    echo "  ✓ 信道 → auto"
-
-    # 加密方式
-    sed -i 's/encryption=none/encryption=sae-mixed/' "$MTWIFI_SH"
-    echo "  ✓ 加密 → sae-mixed"
-
-    # 密码（仅在 encryption=sae-mixed 行后插入，避免重复插入）
-    if ! grep -q 'key=12345678' "$MTWIFI_SH"; then
-        sed -i '/encryption=sae-mixed/a \    set wireless.default_${dev}.key=12345678' \
-            "$MTWIFI_SH"
-        echo "  ✓ WiFi 密码 → 12345678"
-    else
-        echo "  - WiFi 密码已存在，跳过"
-    fi
+    sed -i 's/192\.168\.6\.1/192.168.2.1/' "${CONFIG_GEN}"
+    echo "  ✓ LAN IP → 192.168.2.1"
 fi
 
 # =============================================
+# 2. WiFi 默认参数（uci-defaults 方式）
+#
+#    VIKINGYFY owrt 分支适配说明：
+#    ─────────────────────────────
+#    此分支基于 immortalwrt upstream，使用 mt76（mac80211）
+#    驱动。360T7 硬件：
+#      radio0 = MT7976C 2.4GHz（band=2g）
+#      radio1 = MT7976C 5GHz  （band=5g）
+#
+#    uci-defaults 脚本在首次开机时由 /etc/init.d/boot
+#    自动调用，执行成功（exit 0）后脚本自动删除。
+#    此方式对标准 immortalwrt 100% 兼容。
+# =============================================
+echo ""
+echo ">>> 写入 WiFi 默认配置（uci-defaults）..."
+
+UCI_DIR="./package/base-files/files/etc/uci-defaults"
+mkdir -p "${UCI_DIR}"
+
+# 使用 UCI batch 模式写入，更稳定可靠
+cat > "${UCI_DIR}/99-wireless-defaults" << 'WIFI_EOF'
+#!/bin/sh
+# 99-wireless-defaults
+# 适配：VIKINGYFY/immortalwrt owrt 分支（标准 mac80211 / mt76）
+# 设备：360T7（MT7981B + MT7976C）
+# 执行：首次开机自动运行，exit 0 后自动删除
+
+# ── 等待 wireless UCI 初始化完成 ──────────────────
+# 某些平台首次启动时 wireless config 生成较慢
+local retries=0
+while [ ! -f /etc/config/wireless ] && [ $retries -lt 10 ]; do
+    sleep 1
+    retries=$((retries + 1))
+done
+
+[ -f /etc/config/wireless ] || {
+    echo "99-wireless-defaults: /etc/config/wireless not found, skip"
+    exit 1
+}
+
+# ── 2.4GHz（radio0）────────────────────────────────
+uci -q batch << 'UCI'
+set wireless.radio0.disabled=0
+set wireless.default_radio0.ssid=cmcc
+set wireless.default_radio0.encryption=sae-mixed
+set wireless.default_radio0.key=12345678
+UCI
+
+# ── 5GHz（radio1）──────────────────────────────────
+uci -q batch << 'UCI'
+set wireless.radio1.disabled=0
+set wireless.default_radio1.ssid=cmcc_5G
+set wireless.default_radio1.encryption=sae-mixed
+set wireless.default_radio1.key=12345678
+UCI
+
+uci commit wireless
+
+echo "99-wireless-defaults: WiFi 默认配置已写入"
+exit 0
+WIFI_EOF
+
+chmod +x "${UCI_DIR}/99-wireless-defaults"
+
+echo "  ✓ WiFi uci-defaults 脚本已写入"
+echo "    路径 : ${UCI_DIR}/99-wireless-defaults"
+echo "    2.4G : SSID=cmcc  加密=sae-mixed  密码=12345678"
+echo "    5G   : SSID=cmcc_5G  加密=sae-mixed  密码=12345678"
+echo "    时机 : 路由器首次开机自动执行，执行后自动删除"
+
+# =============================================
 # 3. Argon 主题美化
+#    VIKINGYFY owrt 使用 immortalwrt/luci，
+#    luci-theme-argon 路径与标准 immortalwrt 完全一致
 # =============================================
 ARGON_BASE="./feeds/luci/themes/luci-theme-argon"
 ARGON_CSS="${ARGON_BASE}/htdocs/luci-static/argon/css/cascade.css"
@@ -68,30 +112,37 @@ echo ">>> 检查 Argon 主题..."
 if [ ! -d "${ARGON_BASE}" ]; then
     echo "  ⚠ WARNING: luci-theme-argon 未找到，跳过主题美化"
     echo "    预期路径: ${ARGON_BASE}"
+    echo "    请确认 .config 中已启用 luci-theme-argon"
 else
     echo "  ✓ Argon 主题目录已找到"
 
-    # --- 3.1 自定义背景图 & 字体（来自仓库 argon/ 目录）---
+    # --- 3.1 替换背景图 & 字体 ---
     if [ -d "${GITHUB_WORKSPACE}/argon" ]; then
         echo ""
         echo ">>> 复制自定义资源..."
 
         if [ -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" ]; then
-            cp -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" "${ARGON_IMG}/bg1.jpg"
+            cp -f "${GITHUB_WORKSPACE}/argon/bg1.jpg" \
+                "${ARGON_IMG}/bg1.jpg"
             echo "  ✓ 背景图 bg1.jpg 已替换"
+        else
+            echo "  - argon/bg1.jpg 不存在，跳过"
         fi
 
         if [ -d "${GITHUB_WORKSPACE}/argon/fonts" ] && \
            [ -d "${ARGON_FONTS}" ]; then
             rm -f "${ARGON_FONTS}/TypoGraphica"*
-            cp -f "${GITHUB_WORKSPACE}/argon/fonts/"* "${ARGON_FONTS}/"
+            cp -f "${GITHUB_WORKSPACE}/argon/fonts/"* \
+                "${ARGON_FONTS}/"
             echo "  ✓ 自定义字体已替换"
+        else
+            echo "  - argon/fonts 目录不存在或字体目录缺失，跳过"
         fi
     else
         echo "  - 无自定义资源目录 (argon/)，跳过资源替换"
     fi
 
-    # ✅ 所有 CSS 修改前先检查文件是否存在
+    # --- CSS 修改前验证文件存在 ---
     if [ ! -f "${ARGON_CSS}" ]; then
         echo "  ⚠ WARNING: cascade.css 未找到，跳过 CSS 修改"
         echo "    预期路径: ${ARGON_CSS}"
@@ -99,7 +150,7 @@ else
         echo ""
         echo ">>> 修改 Argon CSS..."
 
-        # --- 3.2 注入 shine 动画关键帧（幂等：先检查是否已存在）---
+        # --- 3.2 注入 shine 动画关键帧（幂等）---
         if ! grep -q "@keyframes shine" "${ARGON_CSS}"; then
             sed -i '/@keyframes anim-fade-in/i\
 @keyframes shine {\
@@ -141,7 +192,7 @@ else
             "${ARGON_CSS}"
         echo "  ✓ Brand margin 居中"
 
-        # --- 3.5 删除登录页图标 ---
+        # --- 3.5 删除登录页图标样式块 ---
         sed -i '/^\.login-page \.login-container \.login-form \.brand \.icon {/,/^}/d' \
             "${ARGON_CSS}"
         echo "  ✓ 登录页图标样式已删除"
@@ -198,7 +249,8 @@ else
         echo "  ✓ 登录按钮 Hover 样式已应用"
 
         # --- 3.9 链接激活颜色 ---
-        sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' "${ARGON_CSS}"
+        sed -i '/a:active {/,/}/ s/var(--primary)/#dddddd/g' \
+            "${ARGON_CSS}"
         echo "  ✓ 链接激活颜色已修改"
 
         echo "  ✓ CSS 修改全部完成"
@@ -214,7 +266,7 @@ else
         echo "  - footer_login.ut 未找到，跳过"
     fi
 
-    # --- 3.11 删除登录页 Logo 图标 ---
+    # --- 3.11 删除登录页 SVG Logo ---
     SYSAUTH="${ARGON_BASE}/ucode/template/themes/argon/sysauth.ut"
     if [ -f "${SYSAUTH}" ]; then
         sed -i 's#<img src="{{ media }}/img/argon.svg" class="icon">##g' \
@@ -224,7 +276,7 @@ else
         echo "  - sysauth.ut 未找到，跳过"
     fi
 
-fi  # end ARGON_BASE check
+fi
 
 echo ""
 echo "✓ [Part3] 所有自定义配置已完成"
