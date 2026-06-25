@@ -8,9 +8,9 @@ permissions:
   pull-requests: write
 
 env:
-  REPO_URL: https://github.com/VIKINGYFY/immortalwrt
-  REPO_BRANCH: owrt
-  CONFIG_FILE: ./config/360T7_2410_dae.config
+  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
+  REPO_BRANCH: openwrt-24.10-6.6
+  CONFIG_PATCH: ./config/360T7_2410_dae.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   DIY_P3_SH: diy-part3.sh
@@ -71,12 +71,7 @@ jobs:
           -b $REPO_BRANCH $REPO_URL openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    # ─────────────────────────────────────────────
-    # STAGE 1：feeds update 之前
-    # 只向 feeds.conf.default 写入 feed 地址
-    # feeds/ 目录此时不存在，严禁任何 rm -rf feeds/ 操作
-    # ─────────────────────────────────────────────
-    - name: 🔌 加载自定义 feeds（写入 feeds.conf.default）
+    - name: 🔌 加载自定义 feeds
       run: |
         chmod +x $DIY_P1_SH
         cd openwrt
@@ -85,11 +80,7 @@ jobs:
     - name: 🔄 更新 feeds
       run: cd openwrt && ./scripts/feeds update -a
 
-    # ─────────────────────────────────────────────
-    # STAGE 2：feeds update 之后、feeds install 之前
-    # feeds/ 目录已存在，安全执行替换和清理操作
-    # ─────────────────────────────────────────────
-    - name: 🧹 清理冲突包（替换 golang / 删除冲突 feeds）
+    - name: 🧹 清理冲突包
       run: |
         chmod +x $DIY_P2_SH
         cd openwrt
@@ -98,19 +89,30 @@ jobs:
     - name: 📲 安装 feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    # ─────────────────────────────────────────────
-    # STAGE 3：feeds install 之后
-    # 所有包已就位，执行系统配置和主题美化
-    # ─────────────────────────────────────────────
-    - name: ⚙️ 加载自定义配置（系统 & 主题）
+    - name: ⚙️ 加载配置（仓库 defconfig 为基础 + 用户追加）
       run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x $DIY_P3_SH
         cd openwrt
+
+        echo ">>> 复制仓库官方 dae defconfig 作为基础..."
+        if [ ! -f "defconfig/mt7981-ax3000_dae.config" ]; then
+            echo "❌ ERROR: defconfig/mt7981-ax3000_dae.config 不存在"
+            echo "可用 defconfig："
+            ls defconfig/
+            exit 1
+        fi
+        cp -f defconfig/mt7981-ax3000_dae.config .config
+        echo "  ✓ 基础配置已加载"
+
+        echo ">>> 追加用户自定义配置..."
+        if [ -f "$GITHUB_WORKSPACE/$CONFIG_PATCH" ]; then
+            cat "$GITHUB_WORKSPACE/$CONFIG_PATCH" >> .config
+            echo "  ✓ 用户配置已追加"
+        fi
+
+        chmod +x $GITHUB_WORKSPACE/$DIY_P3_SH
         $GITHUB_WORKSPACE/$DIY_P3_SH
 
-    - name: 📡 下载编译所需软件包
-      id: package
+    - name: 📡 下载软件包
       run: |
         cd openwrt
         make defconfig
@@ -132,41 +134,17 @@ jobs:
           openwrt/.config
           openwrt/logs/
 
-    - name: 📂 整理固件路径 & 列出生成文件
+    - name: 📂 整理固件路径
       run: |
         cd openwrt/bin/targets/*/*
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-
-        echo ""
-        echo "============================================="
-        echo "  固件输出目录: $PWD"
-        echo "============================================="
-        echo ""
-
-        echo ">>> 固件文件（按大小排序）："
-        ls -lhS *.{bin,itb,ubi,img} 2>/dev/null || true
-
-        echo ""
-        echo ">>> sysupgrade 文件："
-        ls -lh *sysupgrade* 2>/dev/null || echo "  ⚠ 未找到 sysupgrade 文件"
-
-        echo ""
-        echo ">>> initramfs 文件："
-        ls -lh *initramfs* 2>/dev/null || echo "  ⚠ 未找到 initramfs 文件"
-
-        echo ""
-        echo ">>> factory 文件："
-        ls -lh *factory* 2>/dev/null || echo "  ⚠ 未找到 factory 文件"
-
-        echo ""
-        echo ">>> 所有文件："
-        ls -lh
+        echo ">>> 生成的固件文件："
+        ls -lh *sysupgrade* *initramfs* *factory* 2>/dev/null || ls -lh
 
     - name: 🏷️ 生成发布标签
       id: tag
       run: |
-        echo "release_tag=360T7-dae-$(date +'%Y%m%d-%H%M')" \
-          >> $GITHUB_OUTPUT
+        echo "release_tag=360T7-dae-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
 
     - name: 🚀 发布固件到 Release
       uses: softprops/action-gh-release@v2
@@ -174,14 +152,14 @@ jobs:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body: |
           ## 360T7 ImmortalWrt (dae)
-          - 源码: VIKINGYFY/immortalwrt @ owrt
-          - 驱动: 标准 mac80211 / mt76（非 MTK SDK）
+          - 源码: padavanonly/immortalwrt-mt798x-6.6 @ openwrt-24.10-6.6
+          - 基础配置: defconfig/mt7981-ax3000_dae.config
+          - 驱动: 闭源 MTK SDK (kmod-mt_wifi)
           - 内核: Linux 6.6 / MediaTek MT7981B
-          - 防火墙: firewall4 / nftables
-          - 代理: luci-app-daede
-          - 主题: luci-theme-argon（自定义美化）
+          - 代理: daed + luci-app-daede
+          - 主题: luci-theme-argon
+          - 固件格式: .bin
           - 编译时间: ${{ steps.tag.outputs.release_tag }}
-        # ✅ 核心修复：使用通配符兼容 .bin 和 .itb 两种格式
         files: |
           ${{ env.FIRMWARE }}/*sysupgrade*
           ${{ env.FIRMWARE }}/*initramfs*
@@ -189,7 +167,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: 🗑️ 清理旧版本 Release 和工作流记录
+    - name: 🗑️ 清理旧版本
       uses: ophub/delete-releases-workflows@main
       with:
         delete_releases: true
