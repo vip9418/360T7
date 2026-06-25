@@ -11,7 +11,6 @@ env:
   REPO_URL: https://github.com/VIKINGYFY/immortalwrt
   REPO_BRANCH: owrt
   CONFIG_FILE: ./config/360T7_2410_dae.config
-  # ✅ 修正：三脚本完整声明，原 diy-part4.sh 改名为 diy-part3.sh
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   DIY_P3_SH: diy-part3.sh
@@ -30,44 +29,23 @@ jobs:
         echo "======= 清理前磁盘空间 ======="
         df -hT
         sudo rm -rf \
-          /usr/share/dotnet \
-          /usr/share/swift \
-          /usr/share/java \
-          /usr/share/ruby \
-          /usr/local/lib/android \
-          /usr/local/graalvm \
-          /usr/local/.ghcup \
-          /usr/local/share/powershell \
-          /usr/local/share/chromium \
-          /usr/local/share/edge_driver \
-          /usr/local/share/gecko_driver \
+          /usr/share/dotnet /usr/share/swift /usr/share/java \
+          /usr/share/ruby /usr/local/lib/android \
+          /usr/local/graalvm /usr/local/.ghcup \
+          /usr/local/share/powershell /usr/local/share/chromium \
+          /usr/local/share/edge_driver /usr/local/share/gecko_driver \
           /usr/local/share/chromedriver-linux64 \
-          /opt/ghc \
-          /opt/hostedtoolcache/CodeQL \
+          /opt/ghc /opt/hostedtoolcache/CodeQL \
           /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk \
-          /opt/hostedtoolcache/Ruby \
-          /opt/hostedtoolcache/go \
-          /opt/az \
-          /opt/microsoft \
-          /opt/pipx \
-          /usr/lib/jvm \
-          /usr/lib/mono \
-          /usr/lib/R \
-          /usr/lib/postgresql \
-          /usr/lib/heroku
+          /opt/hostedtoolcache/Ruby /opt/hostedtoolcache/go \
+          /opt/az /opt/microsoft /opt/pipx \
+          /usr/lib/jvm /usr/lib/mono /usr/lib/R \
+          /usr/lib/postgresql /usr/lib/heroku
         sudo docker image prune --all --force
         sudo apt-get purge -y \
-          azure-cli \
-          google-cloud-cli \
-          google-chrome-stable \
-          firefox \
-          powershell \
-          mono-devel \
-          libgl1-mesa-dri \
-          'php*' \
-          'dotnet*' \
-          'llvm*' \
-          'ruby*' 2>/dev/null || true
+          azure-cli google-cloud-cli google-chrome-stable \
+          firefox powershell mono-devel libgl1-mesa-dri \
+          'php*' 'dotnet*' 'llvm*' 'ruby*' 2>/dev/null || true
         sudo apt-get autoremove -y
         sudo apt-get clean
         echo "======= 清理后磁盘空间 ======="
@@ -93,11 +71,11 @@ jobs:
           -b $REPO_BRANCH $REPO_URL openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    # ─────────────────────────────────────────
+    # ─────────────────────────────────────────────
     # STAGE 1：feeds update 之前
-    # 职责：只向 feeds.conf.default 写入 feed 源
-    # ❌ 严禁在此阶段操作 feeds/ 目录
-    # ─────────────────────────────────────────
+    # 只向 feeds.conf.default 写入 feed 地址
+    # feeds/ 目录此时不存在，严禁任何 rm -rf feeds/ 操作
+    # ─────────────────────────────────────────────
     - name: 🔌 加载自定义 feeds（写入 feeds.conf.default）
       run: |
         chmod +x $DIY_P1_SH
@@ -107,11 +85,10 @@ jobs:
     - name: 🔄 更新 feeds
       run: cd openwrt && ./scripts/feeds update -a
 
-    # ─────────────────────────────────────────
+    # ─────────────────────────────────────────────
     # STAGE 2：feeds update 之后、feeds install 之前
-    # 职责：替换 golang、清理所有冲突包
-    # ✅ feeds/ 目录此时已存在，可以安全操作
-    # ─────────────────────────────────────────
+    # feeds/ 目录已存在，安全执行替换和清理操作
+    # ─────────────────────────────────────────────
     - name: 🧹 清理冲突包（替换 golang / 删除冲突 feeds）
       run: |
         chmod +x $DIY_P2_SH
@@ -121,11 +98,10 @@ jobs:
     - name: 📲 安装 feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    # ─────────────────────────────────────────
+    # ─────────────────────────────────────────────
     # STAGE 3：feeds install 之后
-    # 职责：系统基础配置、WiFi 参数、Argon 主题美化
-    # ✅ 所有包已就位，可以安全修改源码树
-    # ─────────────────────────────────────────
+    # 所有包已就位，执行系统配置和主题美化
+    # ─────────────────────────────────────────────
     - name: ⚙️ 加载自定义配置（系统 & 主题）
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
@@ -164,7 +140,8 @@ jobs:
     - name: 🏷️ 生成发布标签
       id: tag
       run: |
-        echo "release_tag=360T7-dae-$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+        echo "release_tag=360T7-dae-$(date +'%Y%m%d-%H%M')" \
+          >> $GITHUB_OUTPUT
 
     - name: 🚀 发布固件到 Release
       uses: softprops/action-gh-release@v2
@@ -173,11 +150,11 @@ jobs:
         body: |
           ## 360T7 ImmortalWrt (dae)
           - 源码: VIKINGYFY/immortalwrt @ owrt
+          - 驱动: 标准 mac80211 / mt76（非 MTK SDK）
           - 内核: Linux 6.6 / MediaTek MT7981B
           - 防火墙: firewall4 / nftables
           - 代理: luci-app-daede
           - 主题: luci-theme-argon（自定义美化）
-          - 包管理: opkg
           - 编译时间: ${{ steps.tag.outputs.release_tag }}
         files: |
           ${{ env.FIRMWARE }}/*squashfs-sysupgrade.bin
