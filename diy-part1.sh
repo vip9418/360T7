@@ -1,13 +1,5 @@
 #!/bin/bash
 # diy-part1.sh
-# ========================================
-# 执行时机：feeds update -a 之前
-# 职责：仅写入 feeds.conf.default
-# 严禁：操作任何 feeds/ 目录（此时不存在）
-# 适配：VIKINGYFY/immortalwrt owrt 分支
-#       标准 immortalwrt upstream fork
-#       使用 immortalwrt/packages + immortalwrt/luci
-# ========================================
 
 set -e
 
