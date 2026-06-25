@@ -71,6 +71,16 @@ jobs:
           -b $REPO_BRANCH $REPO_URL openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
+    # ✅ ccache 缓存恢复（克隆源码后立即执行）
+    - name: 🗃️ 恢复 ccache 缓存
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-${{ runner.os }}-${{ env.REPO_BRANCH }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ runner.os }}-${{ env.REPO_BRANCH }}-
+          ccache-${{ runner.os }}-
+
     - name: 🔌 加载自定义 feeds
       run: |
         chmod +x $DIY_P1_SH
@@ -125,6 +135,13 @@ jobs:
         echo "Available CPU cores: $(nproc)"
         make -j$(nproc) || make -j1 || make -j1 V=s
 
+    # ✅ ccache 统计（编译完成后打印命中率，方便评估效果）
+    - name: 📈 ccache 统计
+      if: always()
+      run: |
+        echo "======= ccache 统计 ======="
+        ccache -s 2>/dev/null || echo "ccache 未安装或未使用"
+
     - name: ❌ 上传编译失败日志
       if: failure()
       uses: actions/upload-artifact@v4
@@ -156,7 +173,7 @@ jobs:
           - 基础配置: defconfig/mt7981-ax3000_dae.config
           - 驱动: 闭源 MTK SDK (kmod-mt_wifi)
           - 内核: Linux 6.6 / MediaTek MT7981B
-          - 代理: daed + luci-app-daede
+          - 代理: daed + luci-app-daede + luci-app-openclash
           - 主题: luci-theme-argon
           - 固件格式: .bin
           - 编译时间: ${{ steps.tag.outputs.release_tag }}
