@@ -2,13 +2,14 @@ name: 360T7-2410_dae
 
 on:
   workflow_dispatch:
-  
+
 permissions:
   contents: write
   pull-requests: write
-  
+
 env:
-  REPO_URL: https://github.com/VIKINGYFY/immortalwrt/owrt
+
+  REPO_URL: https://github.com/VIKINGYFY/immortalwrt
   REPO_BRANCH: owrt
   CONFIG_FILE: ./config/360T7_2410_dae.config
   DIY_P1_SH: diy-part1.sh
@@ -91,7 +92,7 @@ jobs:
           -b $REPO_BRANCH $REPO_URL openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: 🔌 加载自定义 feeds
+    - name: 🔌 加载自定义 feeds（写入 feeds.conf.default）
       run: |
         chmod +x $DIY_P1_SH
         cd openwrt
@@ -100,9 +101,25 @@ jobs:
     - name: 🔄 更新 feeds
       run: cd openwrt && ./scripts/feeds update -a
 
+    - name: 🧹 清理 feeds 冲突包
+      run: |
+        cd openwrt
+
+        # 删除 dae / daed 旧版（防止与新版冲突）
+        rm -rf ./feeds/luci/applications/luci-app-dae
+        rm -rf ./feeds/luci/applications/luci-app-daed
+        rm -rf ./feeds/packages/net/dae
+        rm -rf ./feeds/packages/net/daed
+
+        # ✅ 删除 small-package feed 中与主 feeds 冲突的基础系统包
+        # 此步骤必须在 feeds update 之后才有效（目录此时才存在）
+        rm -rf ./feeds/smpackage/{base-files,dnsmasq,firewall*,fullconenat,libnftnl,nftables,ppp,opkg,ucl,upx,vsftpd*,miniupnpd-iptables,wireless-regdb}
+
     - name: 📲 安装 feeds
       run: cd openwrt && ./scripts/feeds install -a
 
+    # DIY_P2_SH 在 feeds install 后执行，负责：
+    #   修改默认配置、替换文件、补充自定义包等
     - name: ⚙️ 加载自定义配置
       run: |
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
@@ -116,7 +133,7 @@ jobs:
         cd openwrt
         make defconfig
         make download -j8
-        find dl -size -1024c -exec ls -l {} \;
+        # ✅ Bug5修复：只保留实际有用的清理命令，去掉无意义的 ls -l 行
         find dl -size -1024c -exec rm -f {} \;
 
     - name: 🔨 编译固件
@@ -150,8 +167,8 @@ jobs:
         tag_name: ${{ steps.tag.outputs.release_tag }}
         body: |
           ## 360T7 ImmortalWrt (dae)
-          - 源码: padavanonly/immortalwrt-mt798x-6.6
-          - 分支: openwrt-24.10-6.6 / Linux 6.6
+          - 源码: VIKINGYFY/immortalwrt
+          - 分支: owrt
           - 防火墙: firewall4
           - 代理: luci-app-daede
           - 包管理: opkg
