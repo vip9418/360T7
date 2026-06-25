@@ -120,18 +120,3 @@ SYSAUTH="${ARGON_BASE}/ucode/template/themes/argon/sysauth.ut"
 if [ -f "${SYSAUTH}" ]; then
     sed -i 's#<img src="{{ media }}/img/argon.svg" class="icon">##g' "${SYSAUTH}"
 fi
-
-# 禁用 HNAT 以兼容 DAE（eBPF 透明代理）
-mkdir -p ./package/base-files/files/etc/uci-defaults
-cat > ./package/base-files/files/etc/uci-defaults/99-disable-hnat << 'EOF'
-#!/bin/sh
-# DAE 使用 eBPF 接管流量，与 HNAT 硬件加速路径冲突，禁用 HNAT
-if [ -f /etc/config/hnat ]; then
-    uci set hnat.global.enable='0'
-    uci commit hnat
-fi
-# 阻止 kmod-mtkhnat 自动加载
-echo "blacklist mtkhnat" > /etc/modprobe.d/99-no-hnat.conf
-exit 0
-EOF
-chmod +x ./package/base-files/files/etc/uci-defaults/99-disable-hnat
