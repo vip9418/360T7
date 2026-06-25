@@ -132,10 +132,35 @@ jobs:
           openwrt/.config
           openwrt/logs/
 
-    - name: 📂 整理固件路径
+    - name: 📂 整理固件路径 & 列出生成文件
       run: |
         cd openwrt/bin/targets/*/*
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+
+        echo ""
+        echo "============================================="
+        echo "  固件输出目录: $PWD"
+        echo "============================================="
+        echo ""
+
+        echo ">>> 固件文件（按大小排序）："
+        ls -lhS *.{bin,itb,ubi,img} 2>/dev/null || true
+
+        echo ""
+        echo ">>> sysupgrade 文件："
+        ls -lh *sysupgrade* 2>/dev/null || echo "  ⚠ 未找到 sysupgrade 文件"
+
+        echo ""
+        echo ">>> initramfs 文件："
+        ls -lh *initramfs* 2>/dev/null || echo "  ⚠ 未找到 initramfs 文件"
+
+        echo ""
+        echo ">>> factory 文件："
+        ls -lh *factory* 2>/dev/null || echo "  ⚠ 未找到 factory 文件"
+
+        echo ""
+        echo ">>> 所有文件："
+        ls -lh
 
     - name: 🏷️ 生成发布标签
       id: tag
@@ -156,9 +181,11 @@ jobs:
           - 代理: luci-app-daede
           - 主题: luci-theme-argon（自定义美化）
           - 编译时间: ${{ steps.tag.outputs.release_tag }}
+        # ✅ 核心修复：使用通配符兼容 .bin 和 .itb 两种格式
         files: |
-          ${{ env.FIRMWARE }}/*squashfs-sysupgrade.bin
-          ${{ env.FIRMWARE }}/*initramfs-kernel.bin
+          ${{ env.FIRMWARE }}/*sysupgrade*
+          ${{ env.FIRMWARE }}/*initramfs*
+          ${{ env.FIRMWARE }}/*factory*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
