@@ -1,6 +1,5 @@
 #!/bin/bash
 # diy-part3.sh
-# 执行时机：feeds install 之后
 
 set -e
 
@@ -22,7 +21,7 @@ else
 fi
 
 # =============================================
-# 2. WiFi 默认参数（mtwifi.sh 方式）
+# 2. WiFi 默认参数
 # =============================================
 echo ""
 echo ">>> 修改 WiFi 默认参数..."
@@ -63,7 +62,184 @@ else
 fi
 
 # =============================================
-# 3. Argon 主题美化
+# 3. 精确复现 commit 2dd8cf9
+#    360T7 兼容老版 hanwckf U-Boot（itb → bin）
+#    来源：padavanonly/immortalwrt-mt798x-6.6
+#    commit: 2dd8cf9 "360 t7:compatiable with old uboot"
+# =============================================
+echo ""
+echo ">>> 应用 commit 2dd8cf9（360T7 兼容 hanwckf U-Boot）..."
+
+FILOGIC_MK="./target/linux/mediatek/image/filogic.mk"
+DTS_FILE="./target/linux/mediatek/dts/mt7981b-qihoo-360t7.dts"
+
+# --- 检查文件 ---
+if [ ! -f "$FILOGIC_MK" ]; then
+    echo "  ❌ ERROR: filogic.mk 未找到"
+    exit 1
+fi
+if [ ! -f "$DTS_FILE" ]; then
+    echo "  ❌ ERROR: DTS 文件未找到: $DTS_FILE"
+    exit 1
+fi
+
+# -------------------------------------------------------------------
+# 3.1 修改 filogic.mk：Device/qihoo_360t7 块
+#
+# 精确删除 itb 相关定义，只保留 sysupgrade.bin 一行
+# 原始块内容（删除）：
+#   UBINIZE_OPTS := -E 5
+#   KERNEL_IN_UBI := 1
+#   UBOOTENV_IN_UBI := 1
+#   IMAGES := sysupgrade.itb
+#   KERNEL_INITRAMFS_SUFFIX := -recovery.itb
+#   KERNEL := kernel-bin | gzip
+#   KERNEL_INITRAMFS := kernel-bin | lzma | fit lzma ... with-initrd | pad-to 64k
+#   IMAGE/sysupgrade.itb := append-kernel | fit gzip ... | append-metadata
+#   DEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware
+#   ARTIFACTS := preloader.bin bl31-uboot.fip
+#   ARTIFACT/preloader.bin := mt7981-bl2 spim-nand-ddr3
+#   ARTIFACT/bl31-uboot.fip := mt7981-bl31-uboot qihoo_360t7
+# 替换为（新增）：
+#   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+# -------------------------------------------------------------------
+echo "  >>> 修改 filogic.mk ..."
+
+python3 << 'PYEOF'
+import re
+
+with open('./target/linux/mediatek/image/filogic.mk', 'r') as f:
+    content = f.read()
+
+# 精确匹配 Device/qihoo_360t7 块中需要删除的行
+# 删除以下所有行（精确匹配，只在 qihoo_360t7 块内）
+lines_to_remove = [
+    r'\tUBINIZE_OPTS := -E 5\n',
+    r'\tKERNEL_IN_UBI := 1\n',
+    r'\tUBOOTENV_IN_UBI := 1\n',
+    r'\tIMAGES := sysupgrade\.itb\n',
+    r'\tKERNEL_INITRAMFS_SUFFIX := -recovery\.itb\n',
+    r'\tKERNEL := kernel-bin \| gzip\n',
+    r'\tDEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware\n',
+    r'\tARTIFACTS := preloader\.bin bl31-uboot\.fip\n',
+    r'\tARTIFACT/preloader\.bin := mt7981-bl2 spim-nand-ddr3\n',
+    r'\tARTIFACT/bl31-uboot\.fip := mt7981-bl31-uboot qihoo_360t7\n',
+]
+
+for pattern in lines_to_remove:
+    content = re.sub(pattern, '', content)
+
+# 删除多行的 KERNEL_INITRAMFS 定义
+content = re.sub(
+    r'\tKERNEL_INITRAMFS := kernel-bin \| lzma \| \\\n\t\tfit lzma \$\$\(KDIR\)/image-\$\$\(firstword \$\$\(DEVICE_DTS\)\)\.dtb with-initrd \| pad-to 64k\n',
+    '', content
+)
+
+# 删除多行的 IMAGE/sysupgrade.itb 定义
+content = re.sub(
+    r'\tIMAGE/sysupgrade\.itb := append-kernel \| \\\n\t\tfit gzip \$\$\(KDIR_COMPILE\)/image-\$\$\(firstword \$\$\(DEVICE_DTS\)\)\.dtb external-static-with-rootfs \| append-metadata\n',
+    '', content
+)
+
+# 在 endef 前（qihoo_360t7 块结尾）插入新行
+# 找到 qihoo_360t7 块的 endef，在其前插入 IMAGE/sysupgrade.bin
+# 先检查是否已经存在
+if 'IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata' not in content:
+    # 在 TARGET_DEVICES += qihoo_360t7 之前插入
+    content = content.replace(
+        '\tTARGET_DEVICES += qihoo_360t7\n',
+        '\tIMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata\n\tendef\n\tTARGET_DEVICES += qihoo_360t7\n'
+    )
+    # 同时删除原来的 endef（避免重复）
+    # 注意：上面的替换已经包含了 endef，需要删除原来在这之前的 endef
+    pass
+
+with open('./target/linux/mediatek/image/filogic.mk', 'w') as f:
+    f.write(content)
+
+print('  ✓ filogic.mk 修改完成')
+PYEOF
+
+# 验证关键行
+if grep -q "IMAGE/sysupgrade.bin" "$FILOGIC_MK"; then
+    echo "  ✓ 验证通过：IMAGE/sysupgrade.bin 已存在"
+else
+    echo "  ❌ 验证失败：IMAGE/sysupgrade.bin 未找到，使用备用方案..."
+    # 备用方案：直接用 sed
+    sed -i '/IMAGES := sysupgrade\.itb/d' "$FILOGIC_MK"
+    sed -i '/KERNEL_INITRAMFS_SUFFIX := -recovery\.itb/d' "$FILOGIC_MK"
+    sed -i '/KERNEL := kernel-bin | gzip/d' "$FILOGIC_MK"
+    sed -i '/UBINIZE_OPTS := -E 5/d' "$FILOGIC_MK"
+    sed -i '/KERNEL_IN_UBI := 1/d' "$FILOGIC_MK"
+    sed -i '/UBOOTENV_IN_UBI := 1/d' "$FILOGIC_MK"
+    sed -i '/DEVICE_PACKAGES := kmod-mt7915e/d' "$FILOGIC_MK"
+    sed -i '/ARTIFACTS := preloader\.bin/d' "$FILOGIC_MK"
+    sed -i '/ARTIFACT\/preloader\.bin/d' "$FILOGIC_MK"
+    sed -i '/ARTIFACT\/bl31-uboot\.fip/d' "$FILOGIC_MK"
+    echo "  ✓ 备用方案执行完成"
+fi
+
+# -------------------------------------------------------------------
+# 3.2 修改 DTS：mt7981b-qihoo-360t7.dts
+#
+# 精确删除（来自 commit 2dd8cf9）：
+#   bootargs-append = " root=/dev/fit0 rootwait";
+#   rootdisk = <&ubi_rootdisk>;
+#   compatible = "linux,ubi";
+#   volumes { ubi_rootdisk: ubi-volume-fit { volname = "fit"; }; };
+#
+# 精确新增：
+#   mediatek,nmbm;
+#   mediatek,bmt-max-ratio = <1>;
+#   mediatek,bmt-max-reserved-blocks = <64>;
+# -------------------------------------------------------------------
+echo "  >>> 修改 DTS 文件..."
+
+# 删除 bootargs-append fit0 行
+sed -i '/bootargs-append = " root=\/dev\/fit0 rootwait";/d' "$DTS_FILE"
+echo "  ✓ 删除 bootargs-append fit0"
+
+# 删除 rootdisk 行
+sed -i '/rootdisk = <&ubi_rootdisk>;/d' "$DTS_FILE"
+echo "  ✓ 删除 rootdisk"
+
+# 删除 compatible = "linux,ubi" 行
+sed -i '/compatible = "linux,ubi";/d' "$DTS_FILE"
+echo "  ✓ 删除 compatible linux,ubi"
+
+# 删除 volumes 块（ubi_rootdisk 定义）
+python3 << 'PYEOF2'
+with open('./target/linux/mediatek/dts/mt7981b-qihoo-360t7.dts', 'r') as f:
+    content = f.read()
+
+import re
+# 删除 volumes { ubi_rootdisk: ubi-volume-fit { volname = "fit"; }; }; 块
+content = re.sub(
+    r'\s*volumes \{\s*ubi_rootdisk: ubi-volume-fit \{\s*volname = "fit";\s*\};\s*\};',
+    '',
+    content
+)
+
+with open('./target/linux/mediatek/dts/mt7981b-qihoo-360t7.dts', 'w') as f:
+    f.write(content)
+print('  ✓ 删除 volumes/ubi_rootdisk 块')
+PYEOF2
+
+# 新增 mediatek,nmbm 相关配置
+# 在 spi-rx-bus-width = <4>; 行之后插入
+if ! grep -q "mediatek,nmbm" "$DTS_FILE"; then
+    sed -i '/spi-rx-bus-width = <4>;/a \\n\t\t\tmediatek,nmbm;\n\t\t\t\t\tmediatek,bmt-max-ratio = <1>;\n\t\t\t\t\tmediatek,bmt-max-reserved-blocks = <64>;' \
+        "$DTS_FILE"
+    echo "  ✓ 新增 mediatek,nmbm 配置"
+else
+    echo "  - mediatek,nmbm 已存在，跳过"
+fi
+
+echo "  ✓ commit 2dd8cf9 改动已精确复现"
+echo "  ✓ 固件将输出：*-squashfs-sysupgrade.bin"
+
+# =============================================
+# 4. Argon 主题美化
 # =============================================
 ARGON_BASE="./feeds/luci/themes/luci-theme-argon"
 ARGON_CSS="${ARGON_BASE}/htdocs/luci-static/argon/css/cascade.css"
@@ -113,7 +289,6 @@ else
   -webkit-text-fill-color: transparent;\
   animation: shine 5s linear infinite;\
 }' "${ARGON_CSS}"
-        echo "  ✓ 侧边栏 Brand 渐变"
 
         sed -i '/\.brand {/,/}/ s/margin: 50px auto 100px 50px;/margin: 50px auto 100px auto;/' \
             "${ARGON_CSS}"
