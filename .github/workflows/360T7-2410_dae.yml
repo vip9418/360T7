@@ -159,7 +159,7 @@ jobs:
         body: |
           ## 360T7 ImmortalWrt (dae)
           - 源码: padavanonly/immortalwrt-mt798x-6.6 @ openwrt-24.10-6.6
-          - 基础配置: defconfig/mt7981-ax3000_dae.config
+          - 基础配置: /config/360T7_2410_dae.config
           - 驱动: 闭源 MTK SDK (kmod-mt_wifi)
           - 内核: Linux 6.6 / MediaTek MT7981B
           - 代理: daed + luci-app-daede + luci-app-openclash
